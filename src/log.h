@@ -20,9 +20,11 @@
 #include <string>
 #include <vector>
 
+#include "singleton.h"
+#include "util.h"
+
 #define TIGERKIN_LOG_LEVEL(logger, level) \
-    if (logger->getLevel() <= level)      \
-        tigerkin::LogEventWrap(tigerkin::LogEvent::ptr(new tigerkin::LogEvent(logger, level, __FILE__, __LINE__, 0, tigerkin::getThreadId(), tigerkin::getFiberId(), time(0)))).getSS()
+    if (logger->getLevel() <= level) tigerkin::LogEventWrap(tigerkin::LogEvent::ptr(new tigerkin::LogEvent(logger, level, __FILE__, __LINE__, 0, tigerkin::getThreadId(), tigerkin::getFiberId(), time(0)))).getSS()
 
 #define TIGERKIN_LOG_DEBUG(logger) TIGERKIN_LOG_LEVEL(logger, tigerkin::LogLevel::DEBUG)
 #define TIGERKIN_LOG_INFO(logger) TIGERKIN_LOG_LEVEL(logger, tigerkin::LogLevel::INFO)
@@ -31,14 +33,15 @@
 #define TIGERKIN_LOG_FATAL(logger) TIGERKIN_LOG_LEVEL(logger, tigerkin::LogLevel::FATAL)
 
 #define TIGERKIN_LOG_FMT_LEVEL(logger, level, fmt, ...) \
-    if (logger->getLevel() <= level)                    \
-        tigerkin::LogEventWrap(tigerkin::LogEvent::ptr(new tigerkin::LogEvent(logger, level, __FILE__, __LINE__, 0, tigerkin::getThreadId(), tigerkin::getFiberId(), time(0)))).getEvent()->format(fmt, __VA_ARGS__)
+    if (logger->getLevel() <= level) tigerkin::LogEventWrap(tigerkin::LogEvent::ptr(new tigerkin::LogEvent(logger, level, __FILE__, __LINE__, 0, tigerkin::getThreadId(), tigerkin::getFiberId(), time(0)))).getEvent()->format(fmt, __VA_ARGS__)
 
 #define TIGERKIN_LOG_FMT_DEBUG(logger, fmt, ...) TIGERKIN_LOG_FMT_LEVEL(logger, tigerkin::LogLevel::DEBUG, fmt, __VA_ARGS__)
 #define TIGERKIN_LOG_FMT_INFO(logger, fmt, ...) TIGERKIN_LOG_FMT_LEVEL(logger, tigerkin::LogLevel::INFO, fmt, __VA_ARGS__)
 #define TIGERKIN_LOG_FMT_WARN(logger, fmt, ...) TIGERKIN_LOG_FMT_LEVEL(logger, tigerkin::LogLevel::WARN, fmt, __VA_ARGS__)
 #define TIGERKIN_LOG_FMT_ERROR(logger, fmt, ...) TIGERKIN_LOG_FMT_LEVEL(logger, tigerkin::LogLevel::ERROR, fmt, __VA_ARGS__)
 #define TIGERKIN_LOG_FMT_FATAL(logger, fmt, ...) TIGERKIN_LOG_FMT_LEVEL(logger, tigerkin::LogLevel::FATAL, fmt, __VA_ARGS__)
+
+#define TIGERKIN_LOG_ROOT() tigerkin::SingletonLoggerMgr::getInstance()->getRoot()
 
 using namespace std;
 
@@ -136,11 +139,13 @@ class LogAppender {
     virtual ~LogAppender() {}
     virtual void log(std::shared_ptr<Logger> logger, LogLevel::Level level,
                      LogEvent::ptr event) = 0;
+    LogLevel::Level getLevel() { return m_level; }
+    void setLevel(LogLevel::Level val) { m_level = val; }
     void setFormate(LogFormatter::ptr val) { m_formatter = val; }
     LogFormatter::ptr getFormate() const { return m_formatter; }
 
    protected:
-    LogLevel::Level m_level;
+    LogLevel::Level m_level = LogLevel::DEBUG;
     LogFormatter::ptr m_formatter;
 };
 
@@ -189,6 +194,23 @@ class Logger : public std::enable_shared_from_this<Logger> {
     std::list<LogAppender::ptr> m_appenders;
     LogFormatter::ptr m_formatter;
 };
+
+class LoggerMgr {
+   public:
+    LoggerMgr();
+    Logger::ptr getLogger(const std::string& name);
+
+    void init();
+    Logger::ptr getRoot() const {
+        return m_root;
+    }
+
+   private:
+    std::map<std::string, Logger::ptr> m_loggers;
+    Logger::ptr m_root;
+};
+
+typedef tigerkin::Singleton<LoggerMgr> SingletonLoggerMgr;
 
 }  // namespace tigerkin
 

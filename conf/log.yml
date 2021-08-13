@@ -1,0 +1,15 @@
+logs:
+  - name: root
+    level: info
+    formatter: "%d{%Y-%m-%d %H:%M:%S} %t %N %F [%p] [%c] %f:%l %m%n"
+    appender:
+      - type: FileLogAppender
+        file: log.txt
+      - type: StdOutLogAppender
+  - name: system
+    level: debug
+    formatter: "%d{%Y-%m-%d %H:%M:%S} %t %N %F [%p] [%c] %f:%l %m%n"
+    appender:
+      - type: FileLogAppender
+        file: log.txt
+      - type: StdOutLogAppender

@@ -368,14 +368,14 @@ bool FileLogAppend::reopen() {
     if (m_filestream) {
         m_filestream.close();
     }
-    m_filestream.open(m_filename);
+    m_filestream.open(m_filename, std::fstream::app);
     return !!m_filestream;
 }
 
 void FileLogAppend::log(std::shared_ptr<Logger> logger, LogLevel::Level level,
                         LogEvent::ptr event) {
     if (level >= m_level) {
-        m_filestream << m_formatter->format(logger, level, event);
+        m_formatter->format(m_filestream, logger, level, event);
     }
 }
 
@@ -430,6 +430,25 @@ void Logger::error(const LogEvent::ptr event) {
 
 void Logger::fatal(const LogEvent::ptr event) {
     log(LogLevel::Level::FATAL, event);
+}
+
+LoggerMgr::LoggerMgr() {
+    m_root.reset(new Logger);
+    m_root->addAppender(LogAppender::ptr(new StdOutLogAppend));
+    m_loggers[m_root->getName()] = m_root;
+    init();
+}
+
+void LoggerMgr::init() {
+}
+
+Logger::ptr LoggerMgr::getLogger(const std::string &name) {
+    auto it = m_loggers.find(name);
+    if (it != m_loggers.end())
+        return it->second;
+    Logger::ptr logger(new Logger(name));
+    m_loggers[name] = logger;
+    return logger;
 }
 
 }  // namespace tigerkin
