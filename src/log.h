@@ -42,6 +42,7 @@
 #define TIGERKIN_LOG_FMT_FATAL(logger, fmt, ...) TIGERKIN_LOG_FMT_LEVEL(logger, tigerkin::LogLevel::FATAL, fmt, __VA_ARGS__)
 
 #define TIGERKIN_LOG_ROOT() tigerkin::SingletonLoggerMgr::getInstance()->getRoot()
+#define TIGERKIN_LOG_NAME(name) tigerkin::SingletonLoggerMgr::getInstance()->getLogger(#name)
 
 using namespace std;
 
@@ -51,14 +52,38 @@ class Logger;
 
 class LogLevel {
    public:
-    enum Level { DEBUG = 1,
-                 INFO = 2,
-                 WARN = 3,
-                 ERROR = 4,
-                 FATAL = 5 };
+    enum Level {
+        UNKNOW = 0,
+        DEBUG = 1,
+        INFO = 2,
+        WARN = 3,
+        ERROR = 4,
+        FATAL = 5
+    };
     static const std::string toString(LogLevel::Level level);
     static LogLevel::Level fromString(const std::string& str);
 };
+
+typedef struct AppenderDefine {
+    int type = 1;               //  1:StdOutLogAppender 2:FileLogAppender
+    LogLevel::Level level;
+    std::string file;
+
+    bool operator==(const AppenderDefine &oth) const {
+        return type == oth.type && level == oth.level && file == oth.file;
+    }
+} AppenderDefine;
+
+typedef struct LoggerDefine {
+    std::string name;
+    LogLevel::Level level;
+    std::string formatter;
+    std::vector<AppenderDefine> appenders;
+    
+    bool operator==(const LoggerDefine &oth) const {
+        return name == oth.name && formatter == oth.formatter && level == oth.level && appenders == oth.appenders;
+    }
+} LoggerDefine;
 
 class LogEvent {
    public:
@@ -175,12 +200,14 @@ class Logger : public std::enable_shared_from_this<Logger> {
    public:
     typedef std::shared_ptr<Logger> ptr;
 
-    Logger(const std::string& name = "root");
+    Logger(const std::string &name = "root");
+    Logger(const LoggerDefine &loggerDefine);
     void addAppender(LogAppender::ptr appender);
     void delAppender(LogAppender::ptr appender);
     void setLevel(const LogLevel::Level level) { m_level = level; }
     LogLevel::Level getLevel() const { return m_level; }
     std::string getName() const { return m_name; }
+    bool getIsValue() const { return isValue; }
     void log(LogLevel::Level level, const LogEvent::ptr event);
     void debug(const LogEvent::ptr event);
     void info(const LogEvent::ptr event);
@@ -193,17 +220,18 @@ class Logger : public std::enable_shared_from_this<Logger> {
     LogLevel::Level m_level;
     std::list<LogAppender::ptr> m_appenders;
     LogFormatter::ptr m_formatter;
+    bool isValue = false;
 };
 
 class LoggerMgr {
    public:
     LoggerMgr();
-    Logger::ptr getLogger(const std::string& name);
+    void addLogger(Logger::ptr logger);
+    void addLoggers(const std::string &cfgPath, const std::string &key);
+    void deleteLogger(Logger::ptr logger);
 
-    void init();
-    Logger::ptr getRoot() const {
-        return m_root;
-    }
+    Logger::ptr getRoot() const { return m_root; }
+    Logger::ptr getLogger(const std::string& name);
 
    private:
     std::map<std::string, Logger::ptr> m_loggers;

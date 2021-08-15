@@ -7,10 +7,76 @@
 
 #include "log.h"
 
+#include <cstdio>
+#include "config.h"
 #include <stdarg.h>
 #include <time.h>
 
 namespace tigerkin {
+
+template<>
+class LexicalCast<std::string, LoggerDefine> {
+   public:
+    LoggerDefine operator()(const std::string &v) {
+        YAML::Node node = YAML::Load(v);
+        LoggerDefine loggerDef;
+        try {
+            loggerDef.name = node["name"].as<std::string>();
+            loggerDef.level = LogLevel::fromString(node["level"].as<std::string>());
+            loggerDef.formatter = node["formatter"].as<std::string>();
+            for (size_t i = 0; i < node["appenders"].size(); ++i) {
+                auto it = node["appenders"][i];
+                AppenderDefine appenderDef;
+                if (it["type"].as<std::string>() == "FileLogAppender") {
+                    appenderDef.type = 2;
+                    appenderDef.level = LogLevel::fromString(it["level"].as<std::string>());
+                    appenderDef.file = it["file"].as<std::string>();
+                } else if (it["type"].as<std::string>() == "StdOutLogAppender") {
+                    appenderDef.type = 1;
+                    appenderDef.level = LogLevel::fromString(it["level"].as<std::string>());
+                } else {
+                    throw invalid_argument(v);
+                }
+                loggerDef.appenders.push_back(appenderDef);
+            }
+        } catch(const std::exception& e) {
+            std::cerr << e.what() << '\n';
+        }
+        return loggerDef;
+    }
+};
+
+template<>
+class LexicalCast<LoggerDefine, std::string> {
+   public:
+    std::string operator()(const LoggerDefine &v) {
+        std::stringstream ss;
+        YAML::Node node;
+        try {
+            node["name"] = v.name;
+            node["level"] = LogLevel::toString(v.level);
+            node["formatter"] = v.formatter;
+            for (auto it : v.appenders) {
+                YAML::Node n;
+                n["level"] = LogLevel::toString(it.level);
+                if (it.type == 1) {
+                    n["type"] = "StdOutLogAppender";
+                } else if (it.type == 2) {
+                    n["type"] = "FileLogAppender";
+                    n["file"] = it.file;
+                } else {
+                    std::cerr << "type error:" << it.type << std::endl;
+                    throw invalid_argument("type error");
+                }
+                node["appenders"].push_back(n);
+            }
+        } catch(const std::exception& e) {
+            std::cerr << e.what() << '\n';
+        }
+        ss << node;
+        return ss.str();
+    }
+};
 
 LogEvent::LogEvent(std::shared_ptr<Logger> logger, LogLevel::Level level, const char *file, int32_t line,
                    uint32_t elapse, uint32_t threadId, uint32_t fiberId, uint64_t time)
@@ -51,6 +117,7 @@ const std::string LogLevel::toString(LogLevel::Level level) {
     case LogLevel::name: \
         return #name;
 
+        XX(UNKNOW);
         XX(DEBUG);
         XX(INFO);
         XX(WARN);
@@ -68,12 +135,15 @@ LogLevel::Level LogLevel::fromString(const std::string &str) {
     if (str == #v) {            \
         return LogLevel::level; \
     }
+
+    XX(UNKNOW, unknow)
     XX(DEBUG, debug);
     XX(INFO, info);
     XX(WARN, warn);
     XX(ERROR, error);
     XX(FATAL, fatal);
 
+    XX(UNKNOW, UNKNOW);
     XX(DEBUG, DEBUG);
     XX(INFO, INFO);
     XX(WARN, WARN);
@@ -381,8 +451,34 @@ void FileLogAppend::log(std::shared_ptr<Logger> logger, LogLevel::Level level,
 
 Logger::Logger(const std::string &name)
     : m_name(name), m_level(LogLevel::DEBUG) {
-    m_formatter.reset(new LogFormatter(
-        "%d{%Y-%m-%d %H:%M:%S} %t %N %F [%p] [%c] %f:%l %m%n"));
+    m_formatter.reset(new LogFormatter("%d{%Y-%m-%d %H:%M:%S} %t %N %F [%p] [%c] %f:%l %m%n"));
+    isValue = true;
+}
+
+Logger::Logger(const LoggerDefine &loggerDefine)
+    : m_name(loggerDefine.name), m_level(loggerDefine.level) {
+    LogFormatter::ptr formate(new LogFormatter(loggerDefine.formatter));
+    if (formate->isError()) {
+        isValue = false;
+        return;
+    }
+    for (auto appenderDefine : loggerDefine.appenders) {
+        if (appenderDefine.type == 1) {
+            LogAppender::ptr appender(new StdOutLogAppend());
+            appender->setFormate(formate);
+            appender->setLevel(appenderDefine.level);
+            addAppender(appender);
+            isValue = true;
+        } else if (appenderDefine.type == 2) {
+            LogAppender::ptr appender(new FileLogAppend(appenderDefine.file));
+            appender->setFormate(formate);
+            appender->setLevel(appenderDefine.level);
+            addAppender(appender);
+            isValue = true;
+        } else {
+            isValue = false;
+        }
+    }
 }
 
 void Logger::addAppender(LogAppender::ptr appender) {
@@ -436,10 +532,33 @@ LoggerMgr::LoggerMgr() {
     m_root.reset(new Logger);
     m_root->addAppender(LogAppender::ptr(new StdOutLogAppend));
     m_loggers[m_root->getName()] = m_root;
-    init();
 }
 
-void LoggerMgr::init() {
+void LoggerMgr::addLogger(Logger::ptr logger) {
+    auto it = m_loggers.find(logger->getName());
+    if (it != m_loggers.end()) {
+        m_loggers.erase(it->first);
+    }
+    m_loggers[logger->getName()] = logger;
+}
+
+void LoggerMgr::addLoggers(const std::string &cfgPath, const std::string &key) {
+    ConfigVar<std::vector<LoggerDefine>>::ptr logCfg = Config::lookup("__logs." + key, (std::vector<LoggerDefine>){}, "logs config");
+    YAML::Node root = YAML::LoadFile(cfgPath);
+    tigerkin::Config::loadFromYaml(root, "__logs");
+    for (auto it : logCfg->getValue()) {
+        Logger::ptr logger(new Logger(it));
+
+        if (logger->getIsValue())
+            addLogger(logger);
+    }
+}
+
+void LoggerMgr::deleteLogger(Logger::ptr logger) {
+    auto it = m_loggers.find(logger->getName());
+    if (it == m_loggers.end())
+        return;
+    m_loggers.erase(it->first);
 }
 
 Logger::ptr LoggerMgr::getLogger(const std::string &name) {
