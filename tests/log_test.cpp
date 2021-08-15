@@ -12,17 +12,20 @@
 
 #include "../src/util.h"
 
-int main(int argc, char **argv) {
-    std::cout << "test tigerkin log start" << std::endl;
+void defaultLogTest() {
+    TIGERKIN_LOG_INFO(TIGERKIN_LOG_ROOT()) << "default log";
+    TIGERKIN_LOG_FMT_INFO(TIGERKIN_LOG_ROOT(), "fmt default %s", "log");
+}
 
-    tigerkin::Logger::ptr logger(new tigerkin::Logger("logger test"));
+void simpleLogTest() {
 
+    tigerkin::Logger::ptr logger(new tigerkin::Logger("SimpleLogTest"));
     tigerkin::LogAppender::ptr stdAppender(new tigerkin::StdOutLogAppend());
     tigerkin::LogFormatter::ptr formater(new tigerkin::LogFormatter("%d{%Y-%m-%d %H:%M:%S} %t %N %F [%p] [%c] %f:%l %m%n"));
     stdAppender->setFormate(formater);
     logger->addAppender(stdAppender);
 
-    tigerkin::LogAppender::ptr fileAppender(new tigerkin::FileLogAppend("./log.txt"));
+    tigerkin::LogAppender::ptr fileAppender(new tigerkin::FileLogAppend("./simpleLog.txt"));
     fileAppender->setFormate(formater);
     logger->addAppender(fileAppender);
 
@@ -37,8 +40,35 @@ int main(int argc, char **argv) {
     TIGERKIN_LOG_FMT_WARN(logger, "fmt Hello %s", "World");
     TIGERKIN_LOG_FMT_ERROR(logger, "fmt Hello %s", "World");
     TIGERKIN_LOG_FMT_FATAL(logger, "fmt Hello %s", "World");
+}
 
+void managerLogTest() {
+    tigerkin::SingletonLoggerMgr::getInstance()->addLoggers("/home/liuhu/tigerkin/conf/log.yml", "logs");
+    
+    TIGERKIN_LOG_DEBUG(TIGERKIN_LOG_NAME(system)) << "I am system logger debug";
+    TIGERKIN_LOG_INFO(TIGERKIN_LOG_NAME(system)) << "I am system logger info";
+    TIGERKIN_LOG_WARN(TIGERKIN_LOG_NAME(system)) << "I am system logger warn";
+    
+    TIGERKIN_LOG_DEBUG(TIGERKIN_LOG_NAME(hall)) << "I am hall logger debug";
+    TIGERKIN_LOG_INFO(TIGERKIN_LOG_NAME(hall)) << "I am hall logger info";
+    TIGERKIN_LOG_WARN(TIGERKIN_LOG_NAME(hall)) << "I am hall logger warn";
+
+    TIGERKIN_LOG_DEBUG(TIGERKIN_LOG_NAME(game)) << "I am game logger debug";
+    TIGERKIN_LOG_INFO(TIGERKIN_LOG_NAME(game)) << "I am game logger info";
+    TIGERKIN_LOG_WARN(TIGERKIN_LOG_NAME(game)) << "I am game logger warn";
+
+    tigerkin::Logger::ptr logger = tigerkin::SingletonLoggerMgr::getInstance()->getLogger("game");
+    tigerkin::SingletonLoggerMgr::getInstance()->deleteLogger(logger);
+    TIGERKIN_LOG_DEBUG(TIGERKIN_LOG_NAME(game)) << "I am game logger debug";
+    TIGERKIN_LOG_INFO(TIGERKIN_LOG_NAME(game)) << "I am game logger info";
+    TIGERKIN_LOG_WARN(TIGERKIN_LOG_NAME(game)) << "I am game logger warn";
+}
+
+int main(int argc, char **argv) {
+    std::cout << "test tigerkin log start" << std::endl;
+    defaultLogTest();
+    simpleLogTest();
+    managerLogTest();
     std::cout << "test tigerkin log end" << std::endl;
-
     return 0;
 }
